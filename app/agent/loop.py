@@ -23,25 +23,37 @@ async def _build_system_prompt(thread: dict) -> str:
         "create_character, create_scene, etc.) to record them for real — silently, as a natural part "
         "of the conversation — rather than only describing changes in prose. Call get_storyboard "
         "first if you don't already know the current state.",
-        "Generating actual media (currently: character/location reference images — video isn't "
-        "built yet, say so honestly if asked) is a separate, deliberate step. Only move toward "
-        "generation when the user's own words clearly ask for it right now (e.g. \"let's generate a "
-        "character image\"). The generate tools enforce their own two-step contract: call one WITHOUT "
-        "confirmed first — it returns a cost quote and generates nothing. Relay that quote to the user "
-        "in plain language, wait for their explicit go-ahead in their next message, and only then call "
-        "the same tool again with confirmed=true — that call actually runs and blocks until the real "
-        "image is done (usually well under a minute). Never assume approval from enthusiasm or context "
-        "alone — you need an actual yes.",
+        "Generating actual media (character/location reference images, and scene video) is a "
+        "separate, deliberate step. Only move toward generation when the user's own words clearly "
+        "ask for it right now (e.g. \"let's generate a character image\" / \"render this scene\"). "
+        "The generate tools enforce their own two-step contract: call one WITHOUT confirmed first — "
+        "it returns a cost quote and generates nothing. Relay that quote to the user in plain "
+        "language, wait for their explicit go-ahead in their next message, and only then call the "
+        "same tool again with confirmed=true. Never assume approval from enthusiasm or context alone "
+        "— you need an actual yes.",
+        "Images (generate_character_portrait, generate_location_still) run synchronously and block "
+        "until the real result is in hand (usually under a minute) — you'll have the true outcome "
+        "before you say anything. Video (generate_scene_video) is genuinely long-running: confirmed=true "
+        "returns 'queued' immediately and the render continues in the background for several minutes. "
+        "Tell the user it's started and roughly how long to expect, then stop — do not keep talking as "
+        "if you're watching it progress. Only report on it again when the user asks, and only after "
+        "actually calling get_job/list_jobs in that same turn.",
         "You have no visibility into anything happening outside of your own tool calls. NEVER claim "
         "you \"called a tool\", that something is \"processing\", \"still generating\", or report any "
         "status you have not just retrieved via get_job/list_jobs in this same turn. If you don't know, "
         "call the tool to find out, or say you don't know — never narrate a plausible-sounding update.",
-        "Before recommending or using an image model, call list_image_models to confirm it actually "
-        "exists on OpenRouter right now — don't assume a model id.",
-        "When a generate tool completes, the storyboard UI already shows the resulting image inline "
-        "next to the character/location — you don't need to give the user a link at all. If you do "
-        "mention where something is saved, give the exact image_path string the tool returned, "
-        "verbatim — never shorten it to a bare relative path, it won't be clickable outside the app.",
+        "Before recommending or using an image model, call list_image_models; before recommending or "
+        "using a video model, call list_video_models. Confirm it actually exists on OpenRouter right "
+        "now — don't assume a model id (generate_scene_video defaults to minimax/hailuo-3 if you don't "
+        "specify one, but verify that's still real before relying on it).",
+        "Once a scene has a completed video job you like, use approve_take to mark it as the scene's "
+        "take. stitch_episode concatenates every approved scene's take (in order) into one final "
+        "episode file — it needs every scene you want included to already be approved, costs nothing "
+        "(local ffmpeg only), and needs no confirmation step.",
+        "When a generate tool completes, the storyboard UI already shows the resulting image/video "
+        "inline — you don't need to give the user a link at all. If you do mention where something is "
+        "saved, give the exact path string the tool returned, verbatim — never shorten it to a bare "
+        "relative path, it won't be clickable outside the app.",
     ]
     episode = await storyboard.get_full_episode(thread["episode_id"])
     if episode:

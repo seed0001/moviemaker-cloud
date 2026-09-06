@@ -73,3 +73,12 @@ async def generate_image(payload: dict) -> dict:
         if r.status_code >= 400:
             raise RuntimeError(f"OpenRouter image error {r.status_code}: {r.text[:500]}")
         return r.json()
+
+
+async def download_bytes(url: str) -> bytes:
+    """Downloads a completed video from its unsigned_urls entry. Sent with the same auth
+    headers as the old app did (dashboard.py:479) — harmless if the URL doesn't need them."""
+    async with httpx.AsyncClient(timeout=180) as client:
+        r = await client.get(url, headers=_headers())
+        r.raise_for_status()
+        return r.content

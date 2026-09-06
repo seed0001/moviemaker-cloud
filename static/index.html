@@ -41,6 +41,17 @@
   .thumb.placeholder { display: flex; align-items: center; justify-content: center; font-size: 9px; line-height: 1.2; color: #5a5f70; text-align: center; padding: 3px; }
   .empty { color: #8b90a0; font-style: italic; }
   a { color: #7a9cff; }
+  .takes { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+  .take { background: #0d0e12; border-radius: 6px; padding: 6px; }
+  .take video { width: 100%; border-radius: 4px; display: block; }
+  .take .row { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 11px; color: #8b90a0; }
+  .take button { font-size: 11px; padding: 3px 8px; border-radius: 5px; border: 1px solid #333747; background: #22252f; color: #e6e8ee; cursor: pointer; }
+  .take button.approve { background: #1f5c3a; border-color: #1f5c3a; color: #b7ffd6; }
+  .cardhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .cardhead h2 { margin: 0; }
+  .cardhead button { font-size: 11px; padding: 4px 9px; border-radius: 6px; border: none; background: #3d6fd1; color: white; cursor: pointer; }
+  .cardhead button:disabled { opacity: .5; cursor: default; }
+  .stitchinfo { font-size: 12px; color: #8b90a0; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -71,6 +82,7 @@ let storyboard = null;
 let thread = null;
 let messages = [];
 let sending = false;
+let jobsByScene = {};
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -93,6 +105,9 @@ async function loadEpisodeState() {
   thread = chatData.thread;
   messages = chatData.messages;
   $('modelInput').value = thread.model;
+  const videoJobs = await api(`/api/jobs?episode_id=${activeEpisodeId}&type=video&limit=200`);
+  jobsByScene = {};
+  for (const j of videoJobs) (jobsByScene[j.scene_id] ||= []).push(j);
   renderRail();
   renderLog();
 }
@@ -138,13 +153,12 @@ function renderRail() {
       ${ep.locations.length ? ep.locations.map(l => entityCard(l)).join('') : '<div class="empty">none yet</div>'}
     </div>
     <div class="card">
-      <h2>Scenes (${ep.scenes.length})</h2>
-      ${ep.scenes.length ? ep.scenes.map((s, i) => `
-        <div class="entity">
-          <div class="name">${i+1}. ${escapeHtml(s.title)} <span class="pill ${s.status}">${s.status}</span></div>
-          <div class="meta">${s.type} · ${s.duration}s · ${s.resolution}${s.chain ? ' · chained' : ''}</div>
-        </div>
-      `).join('') : '<div class="empty">none yet</div>'}
+      <div class="cardhead">
+        <h2>Scenes (${ep.scenes.length})</h2>
+        <button id="stitchBtn">Stitch approved scenes</button>
+      </div>
+      <div class="stitchinfo" id="stitchInfo"></div>
+      ${ep.scenes.length ? ep.scenes.map((s, i) => sceneCard(s, i)).join('') : '<div class="empty">none yet</div>'}
     </div>
   `;
   const debounced = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
@@ -155,6 +169,60 @@ function renderRail() {
   $('ep_title').oninput = saveBible;
   $('ep_premise').oninput = saveBible;
   $('ep_style').oninput = saveBible;
+
+  r.querySelectorAll('[data-approve]').forEach(btn => btn.onclick = async () => {
+    await api(`/api/scenes/${btn.dataset.scene}/approve`, { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ job_id: btn.dataset.approve }) });
+    await loadEpisodeState();
+  });
+  r.querySelectorAll('[data-unapprove]').forEach(btn => btn.onclick = async () => {
+    await api(`/api/scenes/${btn.dataset.unapprove}/unapprove`, { method: 'POST' });
+    await loadEpisodeState();
+  });
+  $('stitchBtn').onclick = async () => {
+    $('stitchBtn').disabled = true;
+    $('stitchInfo').textContent = 'Stitching…';
+    try {
+      const res = await api(`/api/episodes/${activeEpisodeId}/stitch`, { method: 'POST' });
+      $('stitchInfo').innerHTML = res.status === 'completed'
+        ? `Done — <a href="${res.output_path}" target="_blank">view episode (${res.scene_count} scenes)</a>`
+        : `Failed: ${escapeHtml(res.error || 'unknown error')}`;
+    } catch (e) {
+      $('stitchInfo').textContent = `Failed: ${e.message}`;
+    } finally {
+      $('stitchBtn').disabled = false;
+    }
+  };
+}
+
+function sceneCard(s, i) {
+  const jobs = (jobsByScene[s.id] || []).slice().sort((a, b) => a.created_at < b.created_at ? 1 : -1);
+  const takes = jobs.map(j => {
+    const approved = s.approved_take_id === j.id;
+    if (j.status === 'completed' && j.media_path) {
+      return `
+        <div class="take">
+          <video controls preload="metadata" src="/media/${j.media_path}"></video>
+          <div class="row">
+            <span>$${(j.actual_cost ?? j.estimated_cost ?? 0).toFixed(2)}</span>
+            ${approved
+              ? `<button class="approve" disabled>✓ approved</button><button data-unapprove="${s.id}">unapprove</button>`
+              : `<button class="approve" data-scene="${s.id}" data-approve="${j.id}">approve this take</button>`}
+          </div>
+        </div>`;
+    }
+    if (j.status === 'failed') {
+      return `<div class="take"><div class="row" style="color:#ff9b9b">failed: ${escapeHtml((j.error||'').slice(0,120))}</div></div>`;
+    }
+    return `<div class="take"><div class="row">${j.status}${j.phase ? ' · ' + escapeHtml(j.phase) : ''}</div></div>`;
+  }).join('');
+  return `
+    <div class="entity">
+      <div class="name">${i+1}. ${escapeHtml(s.title)} <span class="pill ${s.status}">${s.status}</span></div>
+      <div class="meta">${s.type} · ${s.duration}s · ${s.resolution}${s.chain ? ' · chained' : ''}</div>
+      ${takes ? `<div class="takes">${takes}</div>` : ''}
+    </div>
+  `;
 }
 
 function renderLog() {

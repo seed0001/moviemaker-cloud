@@ -8,9 +8,11 @@ async def get_job(job_id: str) -> dict | None:
 
 
 async def list_jobs(status: str | None = None, type: str | None = None,
-                     episode_id: str | None = None, limit: int = 20) -> list[dict]:
+                     episode_id: str | None = None, scene_id: str | None = None,
+                     limit: int = 20) -> list[dict]:
     clauses, params = [], []
-    for col, val in (("status", status), ("type", type), ("episode_id", episode_id)):
+    for col, val in (("status", status), ("type", type), ("episode_id", episode_id),
+                     ("scene_id", scene_id)):
         if val:
             params.append(val)
             clauses.append(f"{col} = ${len(params)}")

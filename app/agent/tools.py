@@ -1,10 +1,10 @@
 """Tool JSON-Schemas + dispatch table for the agent's tool-calling loop.
 
-Storyboard CRUD (M2) plus real image generation and job status (M3) — every tool listed
-here actually does something; never describe a capability in the system prompt that
-isn't backed by a real entry in DISPATCH.
+Storyboard CRUD (M2), image generation (M3), and video generation + approve/stitch (M5) —
+every tool listed here actually does something; never describe a capability in the system
+prompt that isn't backed by a real entry in DISPATCH.
 """
-from .. import jobs_status, media_jobs, openrouter, storyboard
+from .. import jobs_status, media_jobs, openrouter, render_pipeline, storyboard
 
 STRING = {"type": "string"}
 OPT_STRING = {"type": "string"}
@@ -144,9 +144,51 @@ TOOL_SCHEMAS = [
         "List real generation jobs (optionally filtered) to answer 'what's running / what "
         "finished / what failed' truthfully. Never state a job's status without calling this "
         "or get_job first.",
-        {"status": OPT_STRING, "type": OPT_STRING, "episode_id": OPT_STRING,
+        {"status": OPT_STRING, "type": OPT_STRING, "episode_id": OPT_STRING, "scene_id": OPT_STRING,
          "limit": {"type": "integer"}},
         [],
+    ),
+    _schema(
+        "list_video_models",
+        "List real video-generation models available on OpenRouter right now (e.g. MiniMax/"
+        "Hailuo). Call this before recommending or using a model you haven't confirmed exists.",
+        {}, [],
+    ),
+    _schema(
+        "generate_scene_video",
+        "Generate the actual video for a scene. This is long-running (minutes, not seconds) — "
+        "it runs in the background and this call returns immediately once queued; check "
+        "progress with get_job/list_jobs, never guess. Same two-step confirmed contract as the "
+        "image tools: call WITHOUT confirmed first for a cost quote, generates nothing; call "
+        "again with confirmed=true (after the user's explicit yes) to actually start it. Prompt/"
+        "duration/resolution/aspect_ratio default to the scene's own saved fields if omitted. "
+        "use_chain defaults to the scene's own chain flag; when true it uses the previous "
+        "scene's approved take as the first frame for visual continuity.",
+        {
+            "scene_id": STRING, "prompt": OPT_STRING,
+            "confirmed": {"type": "boolean", "description": "Must be true to actually generate."},
+            "model": OPT_STRING, "duration": {"type": "integer"}, "resolution": OPT_STRING,
+            "aspect_ratio": OPT_STRING, "use_chain": {"type": "boolean"},
+        },
+        ["scene_id"],
+    ),
+    _schema(
+        "approve_take",
+        "Mark a completed video job as the approved take for its scene (used later for "
+        "stitching the full episode together).",
+        {"scene_id": STRING, "job_id": STRING}, ["scene_id", "job_id"],
+    ),
+    _schema(
+        "unapprove_take",
+        "Clear a scene's approved take.",
+        {"scene_id": STRING}, ["scene_id"],
+    ),
+    _schema(
+        "stitch_episode",
+        "Concatenate every scene's approved take (in scene order) into one final episode "
+        "video file. Requires every scene you want included to already have an approved take. "
+        "This uses local ffmpeg only — no OpenRouter cost, no confirmation needed.",
+        {"episode_id": STRING}, ["episode_id"],
     ),
 ]
 
@@ -234,6 +276,34 @@ async def _list_jobs(**kwargs):
     return await jobs_status.list_jobs(**{k: v for k, v in kwargs.items() if v is not None})
 
 
+async def _list_video_models():
+    res = await openrouter.list_video_models()
+    models = res.get("data") or res.get("models") or []
+    return [{"id": m.get("id"), "name": m.get("name")} for m in models]
+
+
+async def _generate_scene_video(scene_id: str, prompt: str | None = None, confirmed: bool = False,
+                                 model: str | None = None, duration: int | None = None,
+                                 resolution: str | None = None, aspect_ratio: str | None = None,
+                                 use_chain: bool | None = None):
+    return await media_jobs.enqueue_video_job(
+        scene_id, prompt=prompt, confirmed=confirmed, model=model, duration=duration,
+        resolution=resolution, aspect_ratio=aspect_ratio, use_chain=use_chain,
+    )
+
+
+async def _approve_take(scene_id: str, job_id: str):
+    return await render_pipeline.approve_take(scene_id, job_id)
+
+
+async def _unapprove_take(scene_id: str):
+    return await render_pipeline.unapprove_take(scene_id)
+
+
+async def _stitch_episode(episode_id: str):
+    return await render_pipeline.stitch_episode(episode_id)
+
+
 DISPATCH = {
     "get_storyboard": _get_storyboard,
     "update_episode": _update_episode,
@@ -252,4 +322,9 @@ DISPATCH = {
     "generate_location_still": _generate_location_still,
     "get_job": _get_job,
     "list_jobs": _list_jobs,
+    "list_video_models": _list_video_models,
+    "generate_scene_video": _generate_scene_video,
+    "approve_take": _approve_take,
+    "unapprove_take": _unapprove_take,
+    "stitch_episode": _stitch_episode,
 }
