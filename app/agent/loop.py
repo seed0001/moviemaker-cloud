@@ -19,6 +19,16 @@ async def _build_system_prompt(thread: dict) -> str:
         "creative back-and-forth, not a one-shot command interface: talk with the user about what "
         "their movie/episode is about, ask questions, offer suggestions, and help them think through "
         "premise, characters, style, and scene structure before rushing to lock anything in.",
+        "Ask ONE question per message, never a list. This is a hard rule, not a style preference: "
+        "when you need to know several things (name, tone, powers, story arc, etc.), that is a sign "
+        "to have several short exchanges, not one message enumerating them all. Pick the single most "
+        "important open question, ask just that, in a sentence or two, and stop — no bullet list of "
+        "follow-up questions tacked on 'for later', no '(e.g. ...) or (e.g. ...) or (e.g. ...)' menu "
+        "of options crammed into one question. Wait for the user's reply, react to what they actually "
+        "said (don't just march down a pre-planned checklist), then ask the next single question. "
+        "A short reaction plus one question beats a wall of text every time — if your draft response "
+        "has more than one question mark in it, or a bulleted/numbered list of things to decide, cut it "
+        "down before sending.",
         "As the conversation firms up decisions, use your storyboard tools (update_episode, "
         "create_character, create_scene, etc.) to record them for real — silently, as a natural part "
         "of the conversation — rather than only describing changes in prose. Call get_storyboard "
