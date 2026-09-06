@@ -1,11 +1,10 @@
 """Tool JSON-Schemas + dispatch table for the agent's tool-calling loop.
 
-M2 scope: storyboard CRUD only. Image/video/job/cost tools are added in M3-M5
-(see the plan at C:\\Users\\aztre\\.claude\\plans\\curious-swinging-falcon.md) once
-media_jobs.py/pricing.py/cost.py exist — wiring their schemas here now would let the
-agent "call" tools that don't do anything real yet.
+Storyboard CRUD (M2) plus real image generation and job status (M3) — every tool listed
+here actually does something; never describe a capability in the system prompt that
+isn't backed by a real entry in DISPATCH.
 """
-from .. import storyboard
+from .. import jobs_status, media_jobs, openrouter, storyboard
 
 STRING = {"type": "string"}
 OPT_STRING = {"type": "string"}
@@ -105,6 +104,50 @@ TOOL_SCHEMAS = [
         "Delete a scene from the episode.",
         {"scene_id": STRING}, ["scene_id"],
     ),
+    _schema(
+        "list_image_models",
+        "List real image-generation models available on OpenRouter right now, with their "
+        "ids. Call this before recommending or using a model you haven't confirmed exists.",
+        {}, [],
+    ),
+    _schema(
+        "generate_character_portrait",
+        "Generate a reference portrait image for a character. IMPORTANT two-step contract: "
+        "call this WITHOUT confirmed (or confirmed=false) first — it returns a cost quote and "
+        "does not generate anything. Only call it again with confirmed=true after the user has "
+        "explicitly said to proceed in their own message.",
+        {
+            "character_id": STRING, "prompt": STRING,
+            "confirmed": {"type": "boolean", "description": "Must be true to actually generate."},
+            "model": OPT_STRING, "resolution": OPT_STRING, "n": {"type": "integer"},
+        },
+        ["character_id", "prompt"],
+    ),
+    _schema(
+        "generate_location_still",
+        "Generate a reference still image for a location/set. Same two-step confirmed "
+        "contract as generate_character_portrait.",
+        {
+            "location_id": STRING, "prompt": STRING,
+            "confirmed": {"type": "boolean", "description": "Must be true to actually generate."},
+            "model": OPT_STRING, "resolution": OPT_STRING, "n": {"type": "integer"},
+        },
+        ["location_id", "prompt"],
+    ),
+    _schema(
+        "get_job",
+        "Look up the real current status of one generation job by id.",
+        {"job_id": STRING}, ["job_id"],
+    ),
+    _schema(
+        "list_jobs",
+        "List real generation jobs (optionally filtered) to answer 'what's running / what "
+        "finished / what failed' truthfully. Never state a job's status without calling this "
+        "or get_job first.",
+        {"status": OPT_STRING, "type": OPT_STRING, "episode_id": OPT_STRING,
+         "limit": {"type": "integer"}},
+        [],
+    ),
 ]
 
 
@@ -159,6 +202,38 @@ async def _delete_scene(scene_id: str):
     return {"ok": True}
 
 
+async def _list_image_models():
+    res = await openrouter.list_image_models()
+    models = res.get("data") or res.get("models") or []
+    return [{"id": m.get("id"), "name": m.get("name")} for m in models]
+
+
+async def _generate_character_portrait(character_id: str, prompt: str, confirmed: bool = False,
+                                        model: str | None = None, resolution: str | None = None,
+                                        n: int = 1):
+    kwargs = {"confirmed": confirmed, "resolution": resolution, "n": n}
+    if model:
+        kwargs["model"] = model
+    return await media_jobs.generate_reference_image("character", character_id, prompt, **kwargs)
+
+
+async def _generate_location_still(location_id: str, prompt: str, confirmed: bool = False,
+                                    model: str | None = None, resolution: str | None = None,
+                                    n: int = 1):
+    kwargs = {"confirmed": confirmed, "resolution": resolution, "n": n}
+    if model:
+        kwargs["model"] = model
+    return await media_jobs.generate_reference_image("location", location_id, prompt, **kwargs)
+
+
+async def _get_job(job_id: str):
+    return await jobs_status.get_job(job_id)
+
+
+async def _list_jobs(**kwargs):
+    return await jobs_status.list_jobs(**{k: v for k, v in kwargs.items() if v is not None})
+
+
 DISPATCH = {
     "get_storyboard": _get_storyboard,
     "update_episode": _update_episode,
@@ -172,4 +247,9 @@ DISPATCH = {
     "update_scene": _update_scene,
     "reorder_scenes": _reorder_scenes,
     "delete_scene": _delete_scene,
+    "list_image_models": _list_image_models,
+    "generate_character_portrait": _generate_character_portrait,
+    "generate_location_still": _generate_location_still,
+    "get_job": _get_job,
+    "list_jobs": _list_jobs,
 }

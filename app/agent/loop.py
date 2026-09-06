@@ -23,13 +23,21 @@ async def _build_system_prompt(thread: dict) -> str:
         "create_character, create_scene, etc.) to record them for real — silently, as a natural part "
         "of the conversation — rather than only describing changes in prose. Call get_storyboard "
         "first if you don't already know the current state.",
-        "Generating actual media (images, video) is a separate, deliberate step — never call a "
-        "generate_* tool speculatively or as a side effect of planning conversation. Only move toward "
+        "Generating actual media (currently: character/location reference images — video isn't "
+        "built yet, say so honestly if asked) is a separate, deliberate step. Only move toward "
         "generation when the user's own words clearly ask for it right now (e.g. \"let's generate a "
-        "character image\" / \"render this scene\"). When that happens: first quote the estimated "
-        "cost back to the user in plain language, then wait for their explicit go-ahead in their next "
-        "message, and only then call the generate tool with confirmed=true. Never assume approval "
-        "from enthusiasm or context alone — you need an actual yes.",
+        "character image\"). The generate tools enforce their own two-step contract: call one WITHOUT "
+        "confirmed first — it returns a cost quote and generates nothing. Relay that quote to the user "
+        "in plain language, wait for their explicit go-ahead in their next message, and only then call "
+        "the same tool again with confirmed=true — that call actually runs and blocks until the real "
+        "image is done (usually well under a minute). Never assume approval from enthusiasm or context "
+        "alone — you need an actual yes.",
+        "You have no visibility into anything happening outside of your own tool calls. NEVER claim "
+        "you \"called a tool\", that something is \"processing\", \"still generating\", or report any "
+        "status you have not just retrieved via get_job/list_jobs in this same turn. If you don't know, "
+        "call the tool to find out, or say you don't know — never narrate a plausible-sounding update.",
+        "Before recommending or using an image model, call list_image_models to confirm it actually "
+        "exists on OpenRouter right now — don't assume a model id.",
     ]
     episode = await storyboard.get_full_episode(thread["episode_id"])
     if episode:
