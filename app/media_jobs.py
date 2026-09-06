@@ -22,7 +22,7 @@ from .ids import new_id
 logger = logging.getLogger(__name__)
 
 MEDIA_ROOT = os.environ.get("MEDIA_ROOT", "./data")
-DEFAULT_VIDEO_MODEL = "minimax/hailuo-3"
+DEFAULT_VIDEO_MODEL = "bytedance/seedance-2.0-mini"  # cheapest OpenRouter video model as of 2026-09-06
 VIDEO_POLL_SECONDS = 8
 VIDEO_TIMEOUT_SECONDS = 25 * 60
 _VIDEO_SEMAPHORE = asyncio.Semaphore(int(os.environ.get("OR_MAX_CONCURRENT_VIDEO", "2")))
@@ -203,7 +203,7 @@ async def enqueue_video_job(
     if scene is None:
         return {"error": f"scene {scene_id} not found"}
 
-    model = model or DEFAULT_VIDEO_MODEL
+    model = model or scene["video_model"] or DEFAULT_VIDEO_MODEL
     prompt = prompt or scene["prompt"]
     duration = duration or scene["duration"]
     resolution = resolution or scene["resolution"]

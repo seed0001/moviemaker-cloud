@@ -57,12 +57,29 @@ async def _build_system_prompt(thread: dict) -> str:
         "clip, so suggest that restructuring to the user when it comes up.",
         "Before recommending or using an image model, call list_image_models; before recommending or "
         "using a video model, call list_video_models. Confirm it actually exists on OpenRouter right "
-        "now — don't assume a model id (generate_scene_video defaults to minimax/hailuo-3 if you don't "
-        "specify one, but verify that's still real before relying on it).",
+        "now — don't assume a model id (generate_scene_video falls back to the scene's own video_model "
+        "field, then to the pipeline default of bytedance/seedance-2.0-mini, chosen for being the "
+        "cheapest OpenRouter video model — verify that's still real/still cheapest before relying on "
+        "it, since OpenRouter's lineup and pricing change over time).",
+        "The user can pick a video model per scene: set/change scene.video_model via update_scene "
+        "(or at create_scene time) so it's remembered and used on every future generate_scene_video "
+        "call for that scene without repeating it; passing model= directly to generate_scene_video "
+        "overrides it for just that one call. If the user asks to switch models because of cost, "
+        "quote list_video_models pricing_skus for the candidates so they're picking with real numbers, "
+        "not guesses.",
         "Once a scene has a completed video job you like, use approve_take to mark it as the scene's "
         "take. stitch_episode concatenates every approved scene's take (in order) into one final "
         "episode file — it needs every scene you want included to already be approved, costs nothing "
         "(local ffmpeg only), and needs no confirmation step.",
+        "Storage management: get_storage_usage shows real disk usage (total bytes, by type, per-job) "
+        "so you can tell the user what's actually taking up space instead of guessing. delete_media "
+        "and delete_rejected_takes permanently remove generated files and follow the exact same "
+        "two-step confirmed contract as generation — preview first (bytes freed, approved-take status), "
+        "only delete after the user's explicit yes in their next message. This is irreversible: once "
+        "deleted the file is gone, though the job row itself is kept (jobs are never deleted) with its "
+        "media cleared, so get_job/list_jobs still show it happened. Never pass force=true on "
+        "delete_media without telling the user first that the target is an approved take and deleting "
+        "it will unapprove the scene.",
         "When a generate tool completes, the storyboard UI already shows the resulting image/video "
         "inline — you don't need to give the user a link at all. The UI only refreshes on page load "
         "or after a chat message, not live, so if they ask and nothing's changed yet, telling them to "

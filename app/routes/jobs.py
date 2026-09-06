@@ -5,13 +5,22 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .. import jobs_status, render_pipeline
+from .. import jobs_status, media_manage, render_pipeline
 
 router = APIRouter(prefix="/api")
 
 
 class ApproveTake(BaseModel):
     job_id: str
+
+
+class DeleteMedia(BaseModel):
+    confirmed: bool = False
+    force: bool = False
+
+
+class DeleteRejectedTakes(BaseModel):
+    confirmed: bool = False
 
 
 @router.get("/jobs")
@@ -46,3 +55,24 @@ async def api_unapprove_take(scene_id: str):
 @router.post("/episodes/{episode_id}/stitch")
 async def api_stitch_episode(episode_id: str):
     return await render_pipeline.stitch_episode(episode_id)
+
+
+@router.get("/storage")
+async def api_get_storage():
+    return await media_manage.get_storage_summary()
+
+
+@router.post("/jobs/{job_id}/delete_media")
+async def api_delete_job_media(job_id: str, body: DeleteMedia):
+    result = await media_manage.delete_job_media(job_id, confirmed=body.confirmed, force=body.force)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/scenes/{scene_id}/delete_rejected_takes")
+async def api_delete_rejected_takes(scene_id: str, body: DeleteRejectedTakes):
+    result = await media_manage.delete_rejected_takes(scene_id, confirmed=body.confirmed)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result

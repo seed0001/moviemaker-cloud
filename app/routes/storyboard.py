@@ -54,6 +54,7 @@ class SceneCreate(BaseModel):
     location_id: Optional[str] = None
     prompt: str = ""
     notes: str = ""
+    video_model: Optional[str] = None
 
 
 class SceneUpdate(BaseModel):
@@ -68,6 +69,7 @@ class SceneUpdate(BaseModel):
     prompt: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[str] = None
+    video_model: Optional[str] = None
 
 
 def _or_404(row):

@@ -142,6 +142,7 @@ async def create_scene(
     location_id: str | None = None,
     prompt: str = "",
     notes: str = "",
+    video_model: str | None = None,
 ) -> dict:
     sid = new_id("sc")
     async with db.pool().acquire() as conn:
@@ -153,11 +154,11 @@ async def create_scene(
                 chain = bool(existing)  # default true unless it's the first scene, matches old behavior
             row = await conn.fetchrow(
                 """INSERT INTO scenes (id, episode_id, title, type, duration, resolution, aspect_ratio,
-                       chain, character_ids, location_id, prompt, notes, status)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *""",
+                       chain, character_ids, location_id, prompt, notes, status, video_model)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *""",
                 sid, episode_id, title or f"Scene {(existing or 0) + 1}", type, duration, resolution,
                 aspect_ratio, chain, character_ids or [], location_id, prompt, notes,
-                "ready" if prompt else "draft",
+                "ready" if prompt else "draft", video_model,
             )
             await conn.execute(
                 "UPDATE episodes SET scene_order = scene_order || $2, updated_at = now() WHERE id = $1",
@@ -171,11 +172,13 @@ async def update_scene(
     *,
     title=_UNSET, type=_UNSET, duration=_UNSET, resolution=_UNSET, aspect_ratio=_UNSET,
     chain=_UNSET, character_ids=_UNSET, location_id=_UNSET, prompt=_UNSET, notes=_UNSET, status=_UNSET,
+    video_model=_UNSET,
 ) -> dict | None:
     fields = {
         "title": title, "type": type, "duration": duration, "resolution": resolution,
         "aspect_ratio": aspect_ratio, "chain": chain, "character_ids": character_ids,
         "location_id": location_id, "prompt": prompt, "notes": notes, "status": status,
+        "video_model": video_model,
     }
     # auto-promote draft -> ready the first time a non-empty prompt is set, matching the old app's
     # dashboard.py:733-734 behavior, unless the caller is explicitly setting status itself

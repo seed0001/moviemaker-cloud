@@ -50,9 +50,13 @@ CREATE TABLE IF NOT EXISTS scenes (
   status TEXT NOT NULL DEFAULT 'draft',
   approved_take_id TEXT,
   last_error TEXT,
+  video_model TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- NULL means "use the pipeline's default video model" — added after the table already existed
+-- on Railway, so a plain CREATE TABLE IF NOT EXISTS above wouldn't reach deployed databases.
+ALTER TABLE scenes ADD COLUMN IF NOT EXISTS video_model TEXT;
 
 CREATE TABLE IF NOT EXISTS storyboard_panels (
   id TEXT PRIMARY KEY,
@@ -103,6 +107,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   attempt_number INTEGER NOT NULL DEFAULT 1,
   retry_of_job_id TEXT REFERENCES jobs(id),
   error TEXT,
+  media_deleted_at TIMESTAMPTZ,
   episode_id TEXT REFERENCES episodes(id) ON DELETE CASCADE,
   scene_id TEXT REFERENCES scenes(id) ON DELETE CASCADE,
   character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
@@ -117,6 +122,9 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS jobs_status ON jobs (status) WHERE status IN ('queued','in_progress');
 CREATE INDEX IF NOT EXISTS jobs_thread ON jobs (thread_id);
+-- both added after these tables already existed on Railway, so CREATE TABLE IF NOT EXISTS above
+-- wouldn't reach deployed databases
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS media_deleted_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS media_files (
   id TEXT PRIMARY KEY,
