@@ -1,11 +1,12 @@
 """Chat thread + message persistence. One episode-level 'planning' thread (scene_id IS NULL)
 plus optional scene-level threads, sharing the same message schema (see schema.sql)."""
 import json
+import os
 
 from . import db
 from .ids import new_id
 
-DEFAULT_MODEL = "anthropic/claude-sonnet-4.5"
+DEFAULT_MODEL = os.environ.get("DEFAULT_AGENT_MODEL", "anthropic/claude-sonnet-4.5")
 
 
 async def get_or_create_planning_thread(episode_id: str, model: str = DEFAULT_MODEL) -> dict:
