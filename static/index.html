@@ -1,8 +1,208 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>movieMaker Cloud</title></head>
+<head>
+<meta charset="utf-8">
+<title>movieMaker Cloud</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 -apple-system, Segoe UI, Roboto, sans-serif; background: #14161c; color: #e6e8ee; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #1b1e27; border-bottom: 1px solid #2a2e3a; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header select, header input.model { background: #22252f; color: #e6e8ee; border: 1px solid #333747; border-radius: 6px; padding: 5px 8px; font-size: 13px; }
+  header .spacer { flex: 1; }
+  header .status { font-size: 12px; color: #8b90a0; }
+  .layout { display: flex; height: calc(100vh - 45px); }
+  .chatcol { flex: 1 1 62%; display: flex; flex-direction: column; border-right: 1px solid #2a2e3a; min-width: 0; }
+  .rail { flex: 0 0 38%; max-width: 480px; overflow-y: auto; padding: 14px; }
+  #log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 78%; padding: 9px 12px; border-radius: 10px; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: #2b5b8f; }
+  .msg.assistant { align-self: flex-start; background: #23262f; }
+  .msg.tool { align-self: stretch; max-width: 100%; background: #1a1c24; border: 1px solid #2a2e3a; color: #9aa0b4; font-family: ui-monospace, Consolas, monospace; font-size: 12px; padding: 6px 10px; border-radius: 6px; }
+  .msg.tool summary { cursor: pointer; color: #7a8cff; }
+  .composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #2a2e3a; }
+  .composer textarea { flex: 1; resize: none; background: #1b1e27; color: #e6e8ee; border: 1px solid #333747; border-radius: 8px; padding: 10px; font: inherit; height: 52px; }
+  .composer button { background: #3d6fd1; color: white; border: none; border-radius: 8px; padding: 0 18px; font-size: 14px; cursor: pointer; }
+  .composer button:disabled { opacity: .5; cursor: default; }
+  .card { background: #1b1e27; border: 1px solid #2a2e3a; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #8b90a0; margin: 0 0 8px; }
+  .card textarea, .card input[type=text] { width: 100%; background: #14161c; color: #e6e8ee; border: 1px solid #333747; border-radius: 6px; padding: 7px 9px; font: inherit; margin-bottom: 6px; }
+  .card textarea { resize: vertical; min-height: 38px; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #2a2e3a; color: #b7bccb; margin-left: 6px; }
+  .pill.approved { background: #1f5c3a; color: #b7ffd6; }
+  .pill.review { background: #5c4c1f; color: #ffe9b7; }
+  .pill.draft { background: #333747; }
+  .entity { padding: 7px 8px; border-radius: 6px; background: #14161c; margin-bottom: 6px; font-size: 13px; }
+  .entity .name { font-weight: 600; }
+  .entity .desc, .entity .meta { color: #8b90a0; font-size: 12px; }
+  .empty { color: #8b90a0; font-style: italic; }
+  a { color: #7a9cff; }
+</style>
+</head>
 <body>
-<p>movieMaker Cloud backend is running. Frontend UI lands in milestone M3+.</p>
-<p>Try <a href="/api/health">/api/health</a> or <a href="/api/storyboard">/api/storyboard</a>.</p>
+<header>
+  <h1>movieMaker Cloud</h1>
+  <select id="epPick"></select>
+  <button id="epNew" title="New episode">+ new</button>
+  <div class="spacer"></div>
+  <input class="model" id="modelInput" placeholder="model, e.g. anthropic/claude-sonnet-4.5" size="34">
+  <span class="status" id="status"></span>
+</header>
+<div class="layout">
+  <div class="chatcol">
+    <div id="log"></div>
+    <div class="composer">
+      <textarea id="input" placeholder="Talk through the movie concept... (Enter to send, Shift+Enter for newline)"></textarea>
+      <button id="send">Send</button>
+    </div>
+  </div>
+  <div class="rail" id="rail"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let episodes = [];
+let activeEpisodeId = null;
+let storyboard = null;
+let thread = null;
+let messages = [];
+let sending = false;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail || r.statusText);
+  return r.status === 204 ? null : r.json();
+}
+
+async function loadEpisodes() {
+  episodes = await api('/api/episodes');
+  $('epPick').innerHTML = episodes.map(e => `<option value="${e.id}" ${e.is_active ? 'selected' : ''}>${escapeHtml(e.title)}</option>`).join('');
+  const active = episodes.find(e => e.is_active) || episodes[0];
+  if (active) { activeEpisodeId = active.id; await loadEpisodeState(); }
+  else { activeEpisodeId = null; storyboard = null; renderRail(); renderLog(); }
+}
+
+async function loadEpisodeState() {
+  if (!activeEpisodeId) return;
+  storyboard = await api(`/api/storyboard?episode_id=${activeEpisodeId}`);
+  const chatData = await api(`/api/episodes/${activeEpisodeId}/chat`);
+  thread = chatData.thread;
+  messages = chatData.messages;
+  $('modelInput').value = thread.model;
+  renderRail();
+  renderLog();
+}
+
+function escapeHtml(s) {
+  return (s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderRail() {
+  const r = $('rail');
+  if (!storyboard) { r.innerHTML = `<div class="card"><div class="empty">No episode yet — click "+ new" above.</div></div>`; return; }
+  const ep = storyboard;
+  r.innerHTML = `
+    <div class="card">
+      <h2>Episode bible</h2>
+      <input type="text" id="ep_title" value="${escapeHtml(ep.title)}" placeholder="Title">
+      <textarea id="ep_premise" placeholder="Premise">${escapeHtml(ep.premise)}</textarea>
+      <textarea id="ep_style" placeholder="Visual/tonal style">${escapeHtml(ep.style)}</textarea>
+    </div>
+    <div class="card">
+      <h2>Characters (${ep.characters.length})</h2>
+      ${ep.characters.length ? ep.characters.map(c => `
+        <div class="entity"><div class="name">${escapeHtml(c.name)}</div><div class="desc">${escapeHtml(c.description) || '(no description yet)'}</div></div>
+      `).join('') : '<div class="empty">none yet</div>'}
+    </div>
+    <div class="card">
+      <h2>Locations (${ep.locations.length})</h2>
+      ${ep.locations.length ? ep.locations.map(l => `
+        <div class="entity"><div class="name">${escapeHtml(l.name)}</div><div class="desc">${escapeHtml(l.description) || '(no description yet)'}</div></div>
+      `).join('') : '<div class="empty">none yet</div>'}
+    </div>
+    <div class="card">
+      <h2>Scenes (${ep.scenes.length})</h2>
+      ${ep.scenes.length ? ep.scenes.map((s, i) => `
+        <div class="entity">
+          <div class="name">${i+1}. ${escapeHtml(s.title)} <span class="pill ${s.status}">${s.status}</span></div>
+          <div class="meta">${s.type} · ${s.duration}s · ${s.resolution}${s.chain ? ' · chained' : ''}</div>
+        </div>
+      `).join('') : '<div class="empty">none yet</div>'}
+    </div>
+  `;
+  const debounced = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  const saveBible = debounced(async () => {
+    await api(`/api/episodes/${activeEpisodeId}`, { method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ title: $('ep_title').value, premise: $('ep_premise').value, style: $('ep_style').value }) });
+  }, 600);
+  $('ep_title').oninput = saveBible;
+  $('ep_premise').oninput = saveBible;
+  $('ep_style').oninput = saveBible;
+}
+
+function renderLog() {
+  const log = $('log');
+  log.innerHTML = messages.map(m => {
+    if (m.role === 'user' || m.role === 'assistant') {
+      if (!m.content && !(m.tool_calls && m.tool_calls.length)) return '';
+      return `<div class="msg ${m.role}">${escapeHtml(m.content || '')}</div>`;
+    }
+    if (m.role === 'tool') {
+      let body = m.content || '';
+      try { body = JSON.stringify(JSON.parse(body), null, 2); } catch (e) {}
+      return `<details class="msg tool"><summary>tool result</summary><pre>${escapeHtml(body)}</pre></details>`;
+    }
+    return '';
+  }).join('') || '<div class="empty" style="padding:16px">Say hello and start talking through the movie concept.</div>';
+  log.scrollTop = log.scrollHeight;
+}
+
+async function createEpisode() {
+  const title = prompt('Episode title:', 'Untitled episode');
+  if (title === null) return;
+  const ep = await api('/api/episodes', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ title }) });
+  await loadEpisodes();
+  activeEpisodeId = ep.id;
+  await loadEpisodeState();
+}
+
+async function send() {
+  const text = $('input').value.trim();
+  if (!text || sending || !activeEpisodeId) return;
+  sending = true;
+  $('send').disabled = true;
+  $('status').textContent = 'thinking…';
+  messages.push({ role: 'user', content: text });
+  $('input').value = '';
+  renderLog();
+  try {
+    await api(`/api/episodes/${activeEpisodeId}/chat`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ message: text, model: $('modelInput').value || undefined }),
+    });
+    await loadEpisodeState();
+  } catch (e) {
+    messages.push({ role: 'assistant', content: `[error] ${e.message}` });
+    renderLog();
+  } finally {
+    sending = false;
+    $('send').disabled = false;
+    $('status').textContent = '';
+  }
+}
+
+$('epNew').onclick = createEpisode;
+$('epPick').onchange = async () => {
+  activeEpisodeId = $('epPick').value;
+  await api(`/api/episodes/${activeEpisodeId}/select`, { method: 'POST' });
+  await loadEpisodeState();
+};
+$('send').onclick = send;
+$('input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+loadEpisodes();
+</script>
 </body>
 </html>
