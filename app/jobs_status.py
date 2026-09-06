@@ -1,10 +1,17 @@
 """Read-only job status — what the agent (and the user) actually check instead of guessing."""
-from . import db
+from . import db, media_jobs
+
+
+def _with_media_url(job: dict) -> dict:
+    if job.get("media_path"):
+        job["media_url"] = media_jobs.media_url(job["media_path"])
+    return job
 
 
 async def get_job(job_id: str) -> dict | None:
     row = await db.pool().fetchrow("SELECT * FROM jobs WHERE id = $1", job_id)
-    return db.row_to_dict(row)
+    job = db.row_to_dict(row)
+    return _with_media_url(job) if job else None
 
 
 async def list_jobs(status: str | None = None, type: str | None = None,
@@ -21,4 +28,4 @@ async def list_jobs(status: str | None = None, type: str | None = None,
     rows = await db.pool().fetch(
         f"SELECT * FROM jobs {where} ORDER BY created_at DESC LIMIT ${len(params)}", *params,
     )
-    return db.rows_to_list(rows)
+    return [_with_media_url(j) for j in db.rows_to_list(rows)]

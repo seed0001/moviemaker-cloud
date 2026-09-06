@@ -287,6 +287,15 @@ $('input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
+// Lightweight stopgap for background job completion (portraits, video renders) showing up
+// without the user having to send a chat message first. Full push replaces this later (M6).
+// Skips while typing anywhere so it never fights an in-progress edit or composed message.
+setInterval(async () => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (sending || tag === 'INPUT' || tag === 'TEXTAREA' || !activeEpisodeId) return;
+  try { await loadEpisodeState(); } catch (e) { /* transient network hiccup, ignore */ }
+}, 6000);
+
 loadEpisodes();
 </script>
 </body>

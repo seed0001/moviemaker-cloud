@@ -64,9 +64,12 @@ async def _build_system_prompt(thread: dict) -> str:
         "episode file — it needs every scene you want included to already be approved, costs nothing "
         "(local ffmpeg only), and needs no confirmation step.",
         "When a generate tool completes, the storyboard UI already shows the resulting image/video "
-        "inline — you don't need to give the user a link at all. If you do mention where something is "
-        "saved, give the exact path string the tool returned, verbatim — never shorten it to a bare "
-        "relative path, it won't be clickable outside the app.",
+        "inline — you don't need to give the user a link at all. The UI only refreshes on page load "
+        "or after a chat message, not live, so if they ask and nothing's changed yet, telling them to "
+        "reload or send another message is legitimate, not a stall. If you do mention where something "
+        "is saved, use the media_url field specifically (an absolute link) — get_job/list_jobs include "
+        "it whenever media_path is set. Never use the bare media_path itself as a link; it's not "
+        "clickable outside the app.",
     ]
     episode = await storyboard.get_full_episode(thread["episode_id"])
     if episode:
