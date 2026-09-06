@@ -19,6 +19,14 @@ _EXT_BY_MEDIA_TYPE = {
     "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
 }
 
+
+def media_url(rel_path: str) -> str:
+    """Absolute, clickable URL when PUBLIC_BASE_URL is configured (set on Railway to this
+    service's public domain); falls back to a relative path for local dev. Tools must return
+    this, not the bare relative path — a relative path isn't a real link outside the app."""
+    base = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+    return f"{base}/media/{rel_path}" if base else f"/media/{rel_path}"
+
 _ENTITY_TABLE = {"character": "characters", "location": "locations"}
 
 
@@ -110,7 +118,7 @@ async def generate_reference_image(
             media_id, job_id, rel_path, img.get("media_type", "image/png"), len(raw),
         )
         return {
-            "status": "completed", "job_id": job_id, "image_path": f"/media/{rel_path}",
+            "status": "completed", "job_id": job_id, "image_path": media_url(rel_path),
             "estimated_cost": quote["estimated_cost"], "actual_cost": _float(actual_cost),
             "elapsed_seconds": round(time.time() - started),
         }

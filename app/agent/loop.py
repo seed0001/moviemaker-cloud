@@ -38,6 +38,10 @@ async def _build_system_prompt(thread: dict) -> str:
         "call the tool to find out, or say you don't know — never narrate a plausible-sounding update.",
         "Before recommending or using an image model, call list_image_models to confirm it actually "
         "exists on OpenRouter right now — don't assume a model id.",
+        "When a generate tool completes, the storyboard UI already shows the resulting image inline "
+        "next to the character/location — you don't need to give the user a link at all. If you do "
+        "mention where something is saved, give the exact image_path string the tool returned, "
+        "verbatim — never shorten it to a bare relative path, it won't be clickable outside the app.",
     ]
     episode = await storyboard.get_full_episode(thread["episode_id"])
     if episode:
