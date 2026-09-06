@@ -42,6 +42,19 @@ async def _build_system_prompt(thread: dict) -> str:
         "you \"called a tool\", that something is \"processing\", \"still generating\", or report any "
         "status you have not just retrieved via get_job/list_jobs in this same turn. If you don't know, "
         "call the tool to find out, or say you don't know — never narrate a plausible-sounding update.",
+        "Jobs are never deleted — if you already know a specific job_id, check it with get_job(job_id) "
+        "directly rather than list_jobs, which needs the right filters to find it. If list_jobs comes "
+        "back empty when you expected results, that means your filter didn't match — try again with "
+        "fewer/no filters, or use get_job with the exact id. NEVER conclude a job \"finished and was "
+        "cleaned up\" or \"was removed\" just because one query came back empty — that's a filter "
+        "problem, not the truth, and inventing that explanation is exactly the kind of narration you're "
+        "forbidden from doing.",
+        "generate_scene_video validates duration/resolution/aspect_ratio against the real model's "
+        "published constraints before quoting anything — most current video models cap out around "
+        "5-15 seconds per clip. If a scene's own duration is longer than that, you'll get a clear error "
+        "back (not a wasted charge) — the fix is usually to split that scene into several shorter "
+        "chained scenes (use_chain uses the previous scene's last frame) rather than forcing one long "
+        "clip, so suggest that restructuring to the user when it comes up.",
         "Before recommending or using an image model, call list_image_models; before recommending or "
         "using a video model, call list_video_models. Confirm it actually exists on OpenRouter right "
         "now — don't assume a model id (generate_scene_video defaults to minimax/hailuo-3 if you don't "

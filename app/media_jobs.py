@@ -211,6 +211,14 @@ async def enqueue_video_job(
     if not prompt:
         return {"error": "this scene has no prompt yet — set one (update_scene) before generating"}
 
+    model_entry = await pricing.get_video_model_entry(model)
+    validation_errors = pricing.validate_video_params(model_entry, duration, resolution, aspect_ratio)
+    if validation_errors:
+        return {
+            "error": "invalid parameters for this model — fix these and try again (nothing was "
+                     "submitted, nothing was charged): " + "; ".join(validation_errors),
+        }
+
     quote = await quote_video_cost(model, resolution, duration)
     if not confirmed:
         return {
